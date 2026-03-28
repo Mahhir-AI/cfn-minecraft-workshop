@@ -87,7 +87,7 @@ Parameters:
 
   JavaMaxRam:
     Type: String
-    Default: '1300M'
+    Default: '2G'
     Description: >
       Maximum JVM heap size. Use M for megabytes or G for gigabytes (e.g. 2G).
       Must leave headroom for the OS — don't set this to the full instance RAM.

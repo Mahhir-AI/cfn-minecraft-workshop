@@ -1,0 +1,186 @@
+# Student Workshop Guide
+
+## What you will do
+
+This template is **deliberately broken**. Your job is to:
+
+1. Fork this repo and create a branch
+2. Run `cfn-lint` locally to find the bugs
+3. Fix them
+4. Push your branch and open a Pull Request
+5. Watch the CI checks pass
+
+---
+
+## Part 1 — Fork and clone
+
+1. Click **Fork** at the top-right of this page to copy the repo into your own GitHub account.
+
+2. Clone your fork to your machine:
+
+   ```bash
+   git clone https://github.com/<your-username>/cfn-minecraft-workshop.git
+   cd cfn-minecraft-workshop
+   ```
+
+---
+
+## Part 2 — Create a branch
+
+Never commit directly to `main`. Create a branch named after yourself or the fix:
+
+```bash
+git checkout -b fix/template-bugs
+```
+
+---
+
+## Part 3 — Run the tests locally
+
+Install `cfn-lint` (the CloudFormation linter):
+
+```bash
+pip install cfn-lint
+```
+
+Run the built-in checks **and** the custom rules in the `rules/` directory:
+
+```bash
+cfn-lint minecraft-server.yaml --append-rules rules/
+```
+
+You will see output like:
+
+```
+E9002  JavaMaxRam (2G) exceeds usable RAM for t4g.small ...   minecraft-server.yaml:91
+W3010  Property EIP is for EC2-Classic which has been retired ...   minecraft-server.yaml:429
+W9001  AllowSshCidr is 0.0.0.0/0 ...   minecraft-server.yaml:138
+```
+
+cfn-lint exit codes:
+| Code | Meaning |
+|---|---|
+| 0 | No issues |
+| 2 | Errors found — **CI will fail** |
+| 4 | Warnings only — CI passes but they are shown in the log |
+| 6 | Both errors and warnings |
+
+Lines starting with **E** are errors and will block the CI check. Lines starting with **W** are warnings — worth fixing but they won't block a merge.
+
+---
+
+## Part 4 — Fix the bugs
+
+There are two things to fix. Use the linter output to locate them in `minecraft-server.yaml`.
+
+### Bug 1 — `JavaMaxRam` is too high (E9002)
+
+The default value for `JavaMaxRam` is set higher than the available RAM on the default instance type. The rule leaves 512 MB for the OS, so on a `t4g.small` (2 GB total) the maximum you can safely give to Java is **1536 M**.
+
+Find the `JavaMaxRam` parameter and lower the default to a safe value.
+
+<details>
+<summary>Hint</summary>
+
+```yaml
+JavaMaxRam:
+  Type: String
+  Default: '1300M'   # safe for t4g.small (2 GB - 512 MB OS = 1536 MB usable)
+```
+
+</details>
+
+---
+
+### Bug 2 — `EIPAssociation` uses the wrong property (W3010)
+
+The `EIPAssociation` resource uses a property called `EIP`. That property was for **EC2-Classic**, which AWS retired in 2022. This template deploys into a **VPC**, so the correct property is `AllocationId`.
+
+There is also a difference in how you reference it:
+
+| Property | Value | When to use |
+|---|---|---|
+| `EIP` | `!Ref MinecraftEIP` → returns the IP address string | EC2-Classic (retired) |
+| `AllocationId` | `!GetAtt MinecraftEIP.AllocationId` → returns the allocation ID | EC2-VPC |
+
+Find the `EIPAssociation` resource and swap the property.
+
+<details>
+<summary>Hint</summary>
+
+```yaml
+EIPAssociation:
+  Type: AWS::EC2::EIPAssociation
+  Properties:
+    InstanceId: !Ref MinecraftInstance
+    AllocationId: !GetAtt MinecraftEIP.AllocationId
+```
+
+</details>
+
+---
+
+## Part 5 — Verify your fixes locally
+
+Run the linter again after making your changes:
+
+```bash
+cfn-lint minecraft-server.yaml --append-rules rules/
+```
+
+Expected output after both fixes:
+
+```
+W9001  AllowSshCidr is 0.0.0.0/0 ...   minecraft-server.yaml:138
+```
+
+Only the W9001 warning should remain (SSH open to the world). This is intentional for the workshop — in a real deployment you would set `AllowSshCidr` to your own IP. The CI workflow is configured to allow warnings through without failing.
+
+Exit code should be **4** (warnings only), not 2 or 6.
+
+---
+
+## Part 6 — Commit and push
+
+Stage and commit only the template file:
+
+```bash
+git add minecraft-server.yaml
+git commit -m "fix: correct JavaMaxRam default and EIPAssociation property"
+git push -u origin fix/template-bugs
+```
+
+---
+
+## Part 7 — Open a Pull Request
+
+1. Go to your fork on GitHub
+2. Click the **"Compare & pull request"** banner that appears after you push
+3. Set the base repository to the **original** repo (not your fork) and base branch to `main`
+4. Write a short description explaining what you changed and why
+5. Click **Create pull request**
+
+---
+
+## Part 8 — Watch the CI checks
+
+Once the PR is open, scroll down to the **Checks** section. Two workflows will run automatically:
+
+| Workflow | What it does |
+|---|---|
+| `Validate CloudFormation Template` | Runs `cfn-lint` with built-in and custom rules |
+| `SAM Validate CloudFormation Template` | Runs `sam validate` to check structure and syntax |
+
+Both checks must show a green tick before the PR can be merged. If either fails, click **Details** to read the log, fix the issue, commit again to the same branch, and the checks will re-run automatically.
+
+---
+
+## Key concepts recap
+
+| Concept | What it means |
+|---|---|
+| `!Ref` | Returns a resource's primary identifier (e.g. an IP address for an EIP) |
+| `!GetAtt` | Returns a specific attribute of a resource (e.g. `AllocationId` for an EIP) |
+| EC2-Classic vs VPC | EC2-Classic is retired — always use VPC properties for new templates |
+| cfn-lint E vs W | E = error, blocks CI; W = warning, visible but non-blocking |
+| CI on PRs | GitHub Actions runs every time you push, giving fast feedback on your changes |

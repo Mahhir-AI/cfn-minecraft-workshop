@@ -52,10 +52,9 @@ cfn-lint minecraft-server.yaml --append-rules rules/
 You will see output like:
 
 ```
-E9002  JavaMaxRam (2G) exceeds usable RAM for t4g.small ...   minecraft-server.yaml:91
-E9003  Motd is still the default ("A Minecraft Server on AWS") ...   minecraft-server.yaml:116
-W3010  Property EIP is for EC2-Classic which has been retired ...   minecraft-server.yaml:429
-W9001  AllowSshCidr is 0.0.0.0/0 ...   minecraft-server.yaml:138
+E9002  JavaMaxRam (2G) exceeds usable RAM for t4g.small ...   minecraft-server.yaml:90
+E9003  Motd is still the default ("A Minecraft Server on AWS") ...   minecraft-server.yaml:111
+W9001  AllowSshCidr is 0.0.0.0/0 ...   minecraft-server.yaml:136
 ```
 
 cfn-lint exit codes:
@@ -112,9 +111,11 @@ Motd:
 
 ---
 
-### Bug 3 — `EIPAssociation` uses the wrong property (W3010)
+### Bug 3 — `EIPAssociation` uses the wrong property
 
 The `EIPAssociation` resource uses a property called `EIP`. That property was for **EC2-Classic**, which AWS retired in 2022. This template deploys into a **VPC**, so the correct property is `AllocationId`.
+
+**The linter won't catch this one** — it is a silent bug that would only fail at deploy time when AWS rejects the request. This is intentional: not every infrastructure bug is detectable by static analysis, which is why code review and understanding the docs matter.
 
 There is also a difference in how you reference it:
 

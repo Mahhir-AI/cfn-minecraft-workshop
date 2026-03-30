@@ -87,7 +87,7 @@ Parameters:
 
   JavaMaxRam:
     Type: String
-    Default: '1300M'
+    Default: '2G'
     Description: >
       Maximum JVM heap size. Use M for megabytes or G for gigabytes (e.g. 2G).
       Must leave headroom for the OS — don't set this to the full instance RAM.
@@ -154,6 +154,14 @@ Parameters:
     MaxValue: 500
     Description: Root EBS volume size in GB.
 
+  ServerDomain:
+    Type: String
+    Default: ''
+    Description: >
+      Optional. A custom domain name pointing to the Elastic IP (e.g. mc.example.com).
+      If provided, the ServerAddress output will show this instead of the raw IP.
+      Leave blank to use the Elastic IP address directly.
+
 
 # =============================================================================
 # CONDITIONS
@@ -172,6 +180,10 @@ Conditions:
   # True when the user provided a key pair name; false when left blank.
   # Used below to conditionally attach the KeyName property to the EC2 instance.
   HasKeyPair: !Not [!Equals [!Ref KeyPairName, '']]
+
+  # True when the user provided a custom domain name for the server.
+  # Used in Outputs to show the domain-based address instead of the raw IP.
+  HasDomain: !Not [!Equals [!Ref ServerDomain, '']]
 
 
 # =============================================================================
@@ -249,6 +261,7 @@ Resources:
   # ---------------------------------------------------------------------------
   MinecraftSubnet:
     Type: AWS::EC2::Subnet
+    DependsOn: MinecraftInstance
     Properties:
       VpcId: !Ref MinecraftVPC
       CidrBlock: 10.0.1.0/24
@@ -563,6 +576,23 @@ Resources:
           echo "Minecraft server setup complete."
 
 
+  # ===========================================================================
+  # S3 BUCKET — world backups
+  # ===========================================================================
+  # Stores periodic backups of the Minecraft world folder.
+  # Versioning is enabled so you can restore to any previous point in time.
+  # ===========================================================================
+  WorldBackupBucket:
+    Type: AWS::S3::Backet
+    Properties:
+      BucketName: !Sub '${AWS::StackName}-world-backup'
+      VersioningConfiguration:
+        Status: Enabled
+      Tags:
+        - Key: Name
+          Value: !Sub '${AWS::StackName}-world-backup'
+
+
 # =============================================================================
 # OUTPUTS
 # =============================================================================
@@ -578,7 +608,10 @@ Outputs:
 
   ServerAddress:
     Description: Server address to paste into Minecraft multiplayer
-    Value: !Sub '${MinecraftEIP}:${ServerPort}'
+    Value: !If
+      - HasDomain
+      - !Sub '${ServerDomain}:${ServerPort}'
+      - !Sub '${MinecraftEIP}:${ServerPort}'
 
   InstanceId:
     Description: EC2 Instance ID (use with SSM Session Manager)
